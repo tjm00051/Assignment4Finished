@@ -71,28 +71,66 @@ namespace Assignment3
         {
             imageListCards.ImageSize=new Size(120,170);
             string cardPath=Path.Combine(Application.StartupPath,"cards");
-            if(Directory.Exists(cardPath))
-            {
-                imageListCards.Images.Clear();
-                var files =Directory.GetFiles(cardPath,"*.png");
-                Array.Sort(files); 
-                for(int i=0;i<files.Length;i++)
-                {
-                    string file=files[i];
-                    try
-                    {
-                        var img=Image.FromFile(file);
-                        string key=Path.GetFileNameWithoutExtension(file);
-                        imageListCards.Images.Add(key,img);
-                    }
-                    catch
-                    {
-                    }
-                }
-            }
-            else
+            imageListCards.Images.Clear();
+            if (!Directory.Exists(cardPath))
             {
                 MessageBox.Show("Card images folder not found! Place a 'cards' folder next to your .exe file.");
+                return;
+            }
+            var files=Directory.GetFiles(cardPath,"*.png",SearchOption.TopDirectoryOnly);
+            int ExtractNumber(string path)
+            {
+                string name=Path.GetFileNameWithoutExtension(path);
+                var m=System.Text.RegularExpressions.Regex.Match(name,@"(\d+)(?!.*\d)");
+                if (m.Success&&int.TryParse(m.Value,out int n))return n;
+                return int.MinValue;
+            }
+            var list=files.Select(f=>new{Path=f,Index=ExtractNumber(f),Name=Path.GetFileName(f)}).ToList();
+            int validCount=list.Count(x=>x.Index!=int.MinValue);
+            if(validCount>=list.Count/2)
+                list=list.OrderBy(x=>x.Index).ToList();
+            else
+                list=list.OrderBy(x=>x.Name).ToList();
+            foreach(var item in list)
+            {
+                try
+                {
+                    using(var fs=new FileStream(item.Path,FileMode.Open,FileAccess.Read))
+                    using (var img=Image.FromStream(fs))
+                    {
+                        imageListCards.Images.Add((Image)img.Clone());
+                    }
+                }
+                catch
+                {
+                }
+            }
+            string[] ranks={"Ace","2","3","4","5","6","7","8","9","10","Jack","Queen","King" };
+            string[] suits={"Clubs","Diamonds","Hearts","Spades" };
+            int shiftIfUnknown=0; 
+            int detectedShift=int.MinValue;
+            for(int i=0;i<imageListCards.Images.Count;i++)
+            {
+                string keyGuess=Path.GetFileNameWithoutExtension(list[i].Name).ToLower();                                          
+                var digitMatch=System.Text.RegularExpressions.Regex.Match(keyGuess,@"\d+");
+                if(digitMatch.Success&&int.TryParse(digitMatch.Value,out int fileNum))
+                {
+                    int fileRankIdx=(fileNum%13); 
+                    int observedRankIdx=i%13;     
+                    int candidateShift=(fileRankIdx-observedRankIdx+13)%13;
+                    detectedShift=candidateShift; 
+                    break;
+                }
+            }
+            int shift=detectedShift==int.MinValue?shiftIfUnknown:detectedShift;
+            int count=imageListCards.Images.Count;
+            for(int i=0;i<count;i++)
+            {
+                int rankIndex=((i%13)-1)%13; 
+                if(rankIndex<0)rankIndex+=13;
+                int suitIndex=i/13;
+                string friendly=$"{ranks[rankIndex]} of {suits[suitIndex]}";
+                imageListCards.Images.SetKeyName(i,friendly);
             }
         }
         private void picCard_Click(object sender,EventArgs e)
